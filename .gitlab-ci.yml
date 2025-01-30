@@ -1,0 +1,13 @@
+stages:
+  - deploy
+
+deploy-to-prod:
+  stage: deploy
+  image: bitnami/kubectl:latest  # Utilise kubectl
+  before_script:
+    - export KUBECONFIG=$KUBE_CONFIG  # Utiliser la variable GitLab
+  script:
+    - kubectl apply -f k8s/deployment.yaml
+  only:
+    - prod  # Exécuter uniquement sur la branche prod
+
