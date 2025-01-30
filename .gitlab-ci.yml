@@ -3,11 +3,18 @@ stages:
 
 deploy-to-prod:
   stage: deploy
-  image: bitnami/kubectl:latest  # Utilise kubectl
+  image: bitnami/kubectl:latest  # Utilise kubectl pour le déploiement
   before_script:
     - export KUBECONFIG=$KUBE_CONFIG  # Utiliser la variable GitLab
   script:
-    - kubectl apply -f k8s/deployment.yaml
+    - kubectl apply -f k8s/deployment.yaml  # Applique les configurations Kubernetes
   only:
     - prod  # Exécuter uniquement sur la branche prod
-
+  allow_failure: false  # Arrêter le pipeline si le déploiement échoue
+  after_script:
+    - echo "Déploiement terminé"
+  notifications:
+    on_failure:
+      - royceteriieroo@gmail.com  # Mon adresse Mail
+    on_success:
+      - royceteriieroo@gmail.com  # Mon adresse Mail
