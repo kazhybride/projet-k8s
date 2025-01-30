@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monpods-deployment
+  labels:
+    app: monpods
+spec:
+  replicas: 2  # Nombre de réplicas du pod (ajustez selon les besoins)
+  selector:
+    matchLabels:
+      app: monpods
+  template:
+    metadata:
+      labels:
+        app: monpods
+    spec:
+      volumes:
+        - name: monstorage
+          persistentVolumeClaim:
+            claimName: monpvc
+      containers:
+        - name: monnginx
+          image: nginx
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 250m
+              memory: 500Mi
+          volumeMounts:
+            - mountPath: "/usr/share/nginx/html"
+              name: monstorage
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: monpvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: monpv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/srv/data"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monnginx-service
+spec:
+  selector:
+    app: monpods
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 32200
+  type: NodePort  # Exposer à l'extérieur du cluster
