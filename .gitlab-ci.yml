@@ -7,7 +7,7 @@ deploy-to-prod:
   before_script:
     - export KUBECONFIG=$KUBE_CONFIG  # Utiliser la variable GitLab
   script:
-    - kubectl apply -f k8s/deployment.yaml  # Applique les configurations Kubernetes
+    - kubectl apply -f k8s/deploy.yaml  # Applique les configurations Kubernetes
   only:
     - prod  # Exécuter uniquement sur la branche prod
   allow_failure: false  # Arrêter le pipeline si le déploiement échoue
