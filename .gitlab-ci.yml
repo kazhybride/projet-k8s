@@ -1,20 +1,25 @@
 stages:
+  - lint
   - deploy
 
-deploy-to-prod:
-  stage: deploy
-  image: bitnami/kubectl:latest  # Utilise kubectl pour le déploiement
-  before_script:
-    - export KUBECONFIG=$KUBE_CONFIG  # Utiliser la variable GitLab
+variables:
+  KUBE_NAMESPACE: "prod"
+  KUBE_CONFIG: "${CI_PROJECT_DIR}/kubeconfig"
+
+before_script:
+  - echo "$KUBE_CONFIG_DATA" | base64 -d > $KUBE_CONFIG
+  - export KUBECONFIG=$KUBE_CONFIG
+
+lint:
+  stage: lint
+  image: "cytopia/yamllint"
   script:
-    - kubectl apply -f k8s/deploy.yaml  # Applique les configurations Kubernetes
+    - yamllint -d "{extends: default, rules: {line-length: {max: 120}}}" .
+
+k8s_deploy:
+  stage: deploy
+  image: bitnami/kubectl
+  script:
+    - kubectl apply -f glpi-mariadb-k8s.yml -n $KUBE_NAMESPACE
   only:
-    - prod  # Exécuter uniquement sur la branche prod
-  allow_failure: false  # Arrêter le pipeline si le déploiement échoue
-  after_script:
-    - echo "Déploiement terminé"
-  notifications:
-    on_failure:
-      - royceteriieroo@gmail.com  # Mon adresse Mail
-    on_success:
-      - royceteriieroo@gmail.com  # Mon adresse Mail
+    - prod
