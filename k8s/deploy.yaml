@@ -1,76 +1,124 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: monpods-deployment
-  labels:
-    app: monpods
-spec:
-  replicas: 2  # Nombre de réplicas du pod (ajustez selon les besoins)
-  selector:
-    matchLabels:
-      app: monpods
-  template:
-    metadata:
-      labels:
-        app: monpods
-    spec:
-      volumes:
-        - name: monstorage
-          persistentVolumeClaim:
-            claimName: monpvc
-      containers:
-        - name: monnginx
-          image: nginx
-          ports:
-            - containerPort: 80
-          resources:
-            limits:
-              cpu: 500m
-              memory: 1Gi
-            requests:
-              cpu: 250m
-              memory: 500Mi
-          volumeMounts:
-            - mountPath: "/usr/share/nginx/html"
-              name: monstorage
----
-kind: PersistentVolumeClaim
 apiVersion: v1
+kind: Secret
 metadata:
-  name: monpvc
+  name: mariadb-secret
+type: Opaque
+data:
+  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=
+  MYSQL_DATABASE: Z2xwaQ==
+  MYSQL_USER: Z2xwaQ==
+  MYSQL_PASSWORD: cGFzc3dvcmQ=
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pvc
 spec:
-  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
 ---
-kind: PersistentVolume
-apiVersion: v1
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: monpv
-  labels:
-    type: local
+  name: mariadb
 spec:
-  storageClassName: manual
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: "/srv/data"
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:10.5
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MYSQL_DATABASE
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MYSQL_USER
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mariadb-storage
+        persistentVolumeClaim:
+          claimName: mariadb-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: monnginx-service
+  name: mariadb
 spec:
   selector:
-    app: monpods
+    app: mariadb
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-      nodePort: 32200
-  type: NodePort  # Exposer à l'extérieur du cluster
+  - protocol: TCP
+    port: 3306
+    targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glpi
+spec:
+  selector:
+    matchLabels:
+      app: glpi
+  template:
+    metadata:
+      labels:
+        app: glpi
+    spec:
+      containers:
+      - name: glpi
+        image: diouxx/glpi
+        env:
+        - name: GLPI_DB_HOST
+          value: mariadb
+        - name: GLPI_DB_NAME
+          value: glpi
+        - name: GLPI_DB_USER
+          value: glpi
+        - name: GLPI_DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MYSQL_PASSWORD
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glpi
+spec:
+  selector:
+    app: glpi
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
