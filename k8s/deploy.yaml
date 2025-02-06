@@ -1,124 +1,135 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: mariadb-secret
-type: Opaque
+  name: mariadb-secret # Nom du secret
+type: Opaque # Type de secret (Opaque pour les données arbitraires)
 data:
-  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ=
-  MYSQL_DATABASE: Z2xwaQ==
-  MYSQL_USER: Z2xwaQ==
-  MYSQL_PASSWORD: cGFzc3dvcmQ=
+  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ= # Mot de passe root de MariaDB (encodé en base64) - **À CHANGER ABSOLUMENT**
+  MYSQL_DATABASE: Z2xwaQ== # Nom de la base de données (encodé en base64) - **À CHANGER SI NÉCESSAIRE**
+  MYSQL_USER: Z2xwaQ== # Nom d'utilisateur de la base de données (encodé en base64) - **À CHANGER SI NÉCESSAIRE**
+  MYSQL_PASSWORD: cGFzc3dvcmQ= # Mot de passe de l'utilisateur de la base de données (encodé en base64) - **À CHANGER ABSOLUMENT**
+
 ---
+# Définition d'une PersistentVolumeClaim pour le stockage persistant de MariaDB.
+# Ceci permet de conserver les données même si le pod MariaDB est redémarré ou déplacé.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mariadb-pvc
+  name: mariadb-pvc # Nom de la PVC
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce # Mode d'accès : un seul pod peut lire et écrire sur le volume
   resources:
     requests:
-      storage: 1Gi
+      storage: 1Gi # Taille du volume persistant (1 Gigaoctet)
+
 ---
+# Déploiement de MariaDB.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mariadb
+  name: mariadb # Nom du déploiement
 spec:
   selector:
     matchLabels:
-      app: mariadb
-  template:
+      app: mariadb # Sélecteur pour les pods MariaDB
+  template: # Modèle de pod
     metadata:
       labels:
-        app: mariadb
+        app: mariadb # Label pour les pods MariaDB
     spec:
       containers:
-      - name: mariadb
-        image: mariadb:10.5
-        env:
-        - name: MYSQL_ROOT_PASSWORD
+      - name: mariadb # Nom du conteneur MariaDB
+        image: mariadb:10.5 # Image Docker de MariaDB à utiliser
+        env: # Variables d'environnement
+        - name: MYSQL_ROOT_PASSWORD # Mot de passe root de MariaDB
           valueFrom:
             secretKeyRef:
-              name: mariadb-secret
-              key: MYSQL_ROOT_PASSWORD
-        - name: MYSQL_DATABASE
+              name: mariadb-secret # Nom du secret contenant le mot de passe
+              key: MYSQL_ROOT_PASSWORD # Clé dans le secret
+        - name: MYSQL_DATABASE # Nom de la base de données
           valueFrom:
             secretKeyRef:
-              name: mariadb-secret
-              key: MYSQL_DATABASE
-        - name: MYSQL_USER
+              name: mariadb-secret # Nom du secret contenant le nom de la base de données
+              key: MYSQL_DATABASE # Clé dans le secret
+        - name: MYSQL_USER # Nom d'utilisateur de la base de données
           valueFrom:
             secretKeyRef:
-              name: mariadb-secret
-              key: MYSQL_USER
-        - name: MYSQL_PASSWORD
+              name: mariadb-secret # Nom du secret contenant le nom d'utilisateur
+              key: MYSQL_USER # Clé dans le secret
+        - name: MYSQL_PASSWORD # Mot de passe de l'utilisateur de la base de données
           valueFrom:
             secretKeyRef:
-              name: mariadb-secret
-              key: MYSQL_PASSWORD
+              name: mariadb-secret # Nom du secret contenant le mot de passe
+              key: MYSQL_PASSWORD # Clé dans le secret
         ports:
-        - containerPort: 3306
-        volumeMounts:
-        - name: mariadb-storage
-          mountPath: /var/lib/mysql
-      volumes:
-      - name: mariadb-storage
-        persistentVolumeClaim:
-          claimName: mariadb-pvc
+        - containerPort: 3306 # Port du conteneur MariaDB
+        volumeMounts: # Points de montage des volumes
+        - name: mariadb-storage # Nom du volume à monter
+          mountPath: /var/lib/mysql # Chemin de montage dans le conteneur
+      volumes: # Définition des volumes
+      - name: mariadb-storage # Nom du volume
+        persistentVolumeClaim: # Utilisation d'une PersistentVolumeClaim
+          claimName: mariadb-pvc # Nom de la PVC à utiliser
+
 ---
+# Service pour exposer MariaDB en interne.
 apiVersion: v1
 kind: Service
 metadata:
-  name: mariadb
+  name: mariadb # Nom du service
 spec:
   selector:
-    app: mariadb
+    app: mariadb # Sélecteur pour les pods MariaDB
   ports:
-  - protocol: TCP
-    port: 3306
-    targetPort: 3306
+  - protocol: TCP # Protocole TCP
+    port: 3306 # Port du service
+    targetPort: 3306 # Port du conteneur
+
 ---
+# Déploiement de GLPI.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glpi
+  name: glpi # Nom du déploiement
 spec:
   selector:
     matchLabels:
-      app: glpi
-  template:
+      app: glpi # Sélecteur pour les pods GLPI
+  template: # Modèle de pod
     metadata:
       labels:
-        app: glpi
+        app: glpi # Label pour les pods GLPI
     spec:
       containers:
-      - name: glpi
-        image: diouxx/glpi
-        env:
-        - name: GLPI_DB_HOST
-          value: mariadb
-        - name: GLPI_DB_NAME
-          value: glpi
-        - name: GLPI_DB_USER
-          value: glpi
-        - name: GLPI_DB_PASS
+      - name: glpi # Nom du conteneur GLPI
+        image: diouxx/glpi # Image Docker de GLPI à utiliser
+        env: # Variables d'environnement
+        - name: GLPI_DB_HOST # Adresse de l'hôte de la base de données
+          value: mariadb # Nom du service MariaDB (résolution DNS interne)
+        - name: GLPI_DB_NAME # Nom de la base de données GLPI
+          value: glpi # Correspond à la valeur décodée du secret
+        - name: GLPI_DB_USER # Nom d'utilisateur GLPI
+          value: glpi # Correspond à la valeur décodée du secret
+        - name: GLPI_DB_PASS # Mot de passe GLPI
           valueFrom:
             secretKeyRef:
-              name: mariadb-secret
-              key: MYSQL_PASSWORD
+              name: mariadb-secret # Nom du secret contenant le mot de passe
+              key: MYSQL_PASSWORD # Clé dans le secret
         ports:
-        - containerPort: 80
+        - containerPort: 80 # Port du conteneur GLPI
+
 ---
+# Service pour exposer GLPI.
 apiVersion: v1
 kind: Service
 metadata:
-  name: glpi
+  name: glpi # Nom du service
 spec:
   selector:
-    app: glpi
+    app: glpi # Sélecteur pour les pods GLPI
   ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
-  type: LoadBalancer
+  - protocol: TCP # Protocole TCP
+    port: 80 # Port du service (externe)
+    targetPort: 80 # Port du conteneur
+  type: LoadBalancer # Type de service (LoadBalancer pour une exposition externe)
