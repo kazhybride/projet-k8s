@@ -1,135 +1,230 @@
 apiVersion: v1
-kind: Secret
+kind: Namespace
 metadata:
-  name: mariadb-secret # Nom du secret
-type: Opaque # Type de secret (Opaque pour les données arbitraires)
-data:
-  MYSQL_ROOT_PASSWORD: cGFzc3dvcmQ= # Mot de passe root de MariaDB (encodé en base64) - **À CHANGER ABSOLUMENT**
-  MYSQL_DATABASE: Z2xwaQ== # Nom de la base de données (encodé en base64) - **À CHANGER SI NÉCESSAIRE**
-  MYSQL_USER: Z2xwaQ== # Nom d'utilisateur de la base de données (encodé en base64) - **À CHANGER SI NÉCESSAIRE**
-  MYSQL_PASSWORD: cGFzc3dvcmQ= # Mot de passe de l'utilisateur de la base de données (encodé en base64) - **À CHANGER ABSOLUMENT**
-
+  name: monitoring
 ---
-# Définition d'une PersistentVolumeClaim pour le stockage persistant de MariaDB.
-# Ceci permet de conserver les données même si le pod MariaDB est redémarré ou déplacé.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: glpi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: prometheus-storage
+          mountPath: /prometheus
+      volumes:
+      - name: prometheus-storage
+        persistentVolumeClaim:
+          claimName: prometheus-pvc
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mariadb-pvc # Nom de la PVC
+  name: prometheus-pvc
+  namespace: monitoring
 spec:
   accessModes:
-    - ReadWriteOnce # Mode d'accès : un seul pod peut lire et écrire sur le volume
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi # Taille du volume persistant (1 Gigaoctet)
-
+      storage: 5Gi
 ---
-# Déploiement de MariaDB.
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mariadb # Nom du déploiement
-spec:
-  selector:
-    matchLabels:
-      app: mariadb # Sélecteur pour les pods MariaDB
-  template: # Modèle de pod
-    metadata:
-      labels:
-        app: mariadb # Label pour les pods MariaDB
-    spec:
-      containers:
-      - name: mariadb # Nom du conteneur MariaDB
-        image: mariadb:10.5 # Image Docker de MariaDB à utiliser
-        env: # Variables d'environnement
-        - name: MYSQL_ROOT_PASSWORD # Mot de passe root de MariaDB
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret # Nom du secret contenant le mot de passe
-              key: MYSQL_ROOT_PASSWORD # Clé dans le secret
-        - name: MYSQL_DATABASE # Nom de la base de données
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret # Nom du secret contenant le nom de la base de données
-              key: MYSQL_DATABASE # Clé dans le secret
-        - name: MYSQL_USER # Nom d'utilisateur de la base de données
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret # Nom du secret contenant le nom d'utilisateur
-              key: MYSQL_USER # Clé dans le secret
-        - name: MYSQL_PASSWORD # Mot de passe de l'utilisateur de la base de données
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret # Nom du secret contenant le mot de passe
-              key: MYSQL_PASSWORD # Clé dans le secret
-        ports:
-        - containerPort: 3306 # Port du conteneur MariaDB
-        volumeMounts: # Points de montage des volumes
-        - name: mariadb-storage # Nom du volume à monter
-          mountPath: /var/lib/mysql # Chemin de montage dans le conteneur
-      volumes: # Définition des volumes
-      - name: mariadb-storage # Nom du volume
-        persistentVolumeClaim: # Utilisation d'une PersistentVolumeClaim
-          claimName: mariadb-pvc # Nom de la PVC à utiliser
-
----
-# Service pour exposer MariaDB en interne.
 apiVersion: v1
 kind: Service
 metadata:
-  name: mariadb # Nom du service
+  name: prometheus
+  namespace: monitoring
 spec:
   selector:
-    app: mariadb # Sélecteur pour les pods MariaDB
+    app: prometheus
   ports:
-  - protocol: TCP # Protocole TCP
-    port: 3306 # Port du service
-    targetPort: 3306 # Port du conteneur
-
+    - protocol: TCP
+      port: 9090
+      targetPort: 9090
 ---
-# Déploiement de GLPI.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glpi # Nom du déploiement
+  name: grafana
+  namespace: monitoring
 spec:
+  replicas: 3
   selector:
     matchLabels:
-      app: glpi # Sélecteur pour les pods GLPI
-  template: # Modèle de pod
+      app: grafana
+  template:
     metadata:
       labels:
-        app: glpi # Label pour les pods GLPI
+        app: grafana
     spec:
       containers:
-      - name: glpi # Nom du conteneur GLPI
-        image: diouxx/glpi # Image Docker de GLPI à utiliser
-        env: # Variables d'environnement
-        - name: GLPI_DB_HOST # Adresse de l'hôte de la base de données
-          value: mariadb # Nom du service MariaDB (résolution DNS interne)
-        - name: GLPI_DB_NAME # Nom de la base de données GLPI
-          value: glpi # Correspond à la valeur décodée du secret
-        - name: GLPI_DB_USER # Nom d'utilisateur GLPI
-          value: glpi # Correspond à la valeur décodée du secret
-        - name: GLPI_DB_PASS # Mot de passe GLPI
-          valueFrom:
-            secretKeyRef:
-              name: mariadb-secret # Nom du secret contenant le mot de passe
-              key: MYSQL_PASSWORD # Clé dans le secret
+      - name: grafana
+        image: grafana/grafana
         ports:
-        - containerPort: 80 # Port du conteneur GLPI
-
+        - containerPort: 3000
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+      volumes:
+      - name: grafana-storage
+        persistentVolumeClaim:
+          claimName: grafana-pvc
 ---
-# Service pour exposer GLPI.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: glpi # Nom du service
+  name: grafana
+  namespace: monitoring
 spec:
   selector:
-    app: glpi # Sélecteur pour les pods GLPI
+    app: grafana
   ports:
-  - protocol: TCP # Protocole TCP
-    port: 80 # Port du service (externe)
-    targetPort: 80 # Port du conteneur
-  type: LoadBalancer # Type de service (LoadBalancer pour une exposition externe)
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glpi
+  namespace: glpi
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: glpi
+  template:
+    metadata:
+      labels:
+        app: glpi
+    spec:
+      containers:
+      - name: glpi
+        image: diouxx/glpi
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: glpi-storage
+          mountPath: /var/www/html/glpi
+      volumes:
+      - name: glpi-storage
+        persistentVolumeClaim:
+          claimName: glpi-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glpi-pvc
+  namespace: glpi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glpi
+  namespace: glpi
+spec:
+  selector:
+    app: glpi
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: glpi
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: mariadb:latest
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "root"
+        - name: MYSQL_DATABASE
+          value: "glpi"
+        - name: MYSQL_USER
+          value: "glpi"
+        - name: MYSQL_PASSWORD
+          value: "root"
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mariadb-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mariadb-storage
+        persistentVolumeClaim:
+          claimName: mariadb-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-pvc
+  namespace: glpi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: glpi
+spec:
+  selector:
+    app: mariadb
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
